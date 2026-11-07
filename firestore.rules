@@ -1,0 +1,176 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global deny-by-default catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId == request.auth.uid &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 60 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.publicKey is string && data.publicKey.size() >= 10 && data.publicKey.size() <= 2000 &&
+             (!('photoUrl' in data) || data.photoUrl == null || (data.photoUrl is string && data.photoUrl.size() <= 1000)) &&
+             (!('statusMessage' in data) || data.statusMessage == null || (data.statusMessage is string && data.statusMessage.size() <= 200));
+    }
+
+    function isValidConversation(data) {
+      return data.conversationId is string && data.conversationId.size() <= 128 &&
+             data.participantUids is list && data.participantUids.size() == 2 &&
+             request.auth.uid in data.participantUids &&
+             data.participantNames is map &&
+             data.participantEmails is map &&
+             (!('lastMessageCiphertext' in data) || data.lastMessageCiphertext == null || (data.lastMessageCiphertext is string && data.lastMessageCiphertext.size() <= 5000)) &&
+             (!('lastMessageSenderId' in data) || data.lastMessageSenderId == null || (data.lastMessageSenderId is string && data.lastMessageSenderId.size() <= 128));
+    }
+
+    function isValidMessage(data) {
+      return data.senderId is string && data.senderId == request.auth.uid &&
+             data.recipientId is string && data.recipientId.size() <= 128 &&
+             data.participantUids is list && data.participantUids.size() == 2 &&
+             request.auth.uid in data.participantUids &&
+             data.ciphertext is string && data.ciphertext.size() > 0 && data.ciphertext.size() <= 20000 &&
+             data.iv is string && data.iv.size() <= 128 &&
+             data.encryptedKeySender is string && data.encryptedKeySender.size() <= 2048 &&
+             data.encryptedKeyRecipient is string && data.encryptedKeyRecipient.size() <= 2048 &&
+             data.isEncrypted is bool && data.isEncrypted == true;
+    }
+
+    function isValidMoment(data) {
+      return data.momentId is string && data.momentId.size() <= 128 &&
+             data.authorId is string && data.authorId == request.auth.uid &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60 &&
+             data.authorEmail is string && data.authorEmail.size() <= 100 &&
+             data.text is string && data.text.size() >= 1 && data.text.size() <= 1000 &&
+             data.backgroundStyle is string && data.backgroundStyle.size() <= 60 &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.commentsCount is int && data.commentsCount >= 0 &&
+             (!('authorPhotoUrl' in data) || data.authorPhotoUrl == null || (data.authorPhotoUrl is string && data.authorPhotoUrl.size() <= 1000));
+    }
+
+    function isValidMomentComment(data) {
+      return data.commentId is string && data.commentId.size() <= 128 &&
+             data.momentId is string && data.momentId.size() <= 128 &&
+             data.authorId is string && data.authorId == request.auth.uid &&
+             data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60 &&
+             data.authorEmail is string && data.authorEmail.size() <= 100 &&
+             data.commentText is string && data.commentText.size() >= 1 && data.commentText.size() <= 1000;
+    }
+
+    // --- Users Collection ---
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+                       incoming().keys().hasAll(['userId', 'displayName', 'email', 'publicKey', 'createdAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       isValidUserProfile(incoming());
+
+      allow update: if isSignedIn() && isValidId(userId) && request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'publicKey', 'statusMessage', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // --- Conversations Collection ---
+    match /conversations/{conversationId} {
+      allow get: if isSignedIn() && isValidId(conversationId) && request.auth.uid in existing().participantUids;
+      allow list: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+
+      allow create: if isSignedIn() && isValidId(conversationId) &&
+                       incoming().keys().hasAll(['conversationId', 'participantUids', 'participantNames', 'participantEmails', 'createdAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       isValidConversation(incoming());
+
+      allow update: if isSignedIn() && isValidId(conversationId) &&
+                       request.auth.uid in existing().participantUids &&
+                       incoming().conversationId == existing().conversationId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().participantUids == existing().participantUids &&
+                       isValidConversation(incoming()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['lastMessageCiphertext', 'lastMessageSenderId', 'lastMessageTimestamp', 'updatedAt']);
+
+      allow delete: if isSignedIn() && isValidId(conversationId) && request.auth.uid in existing().participantUids;
+
+      // Messages Subcollection
+      match /messages/{messageId} {
+        allow get: if isSignedIn() && isValidId(messageId) && request.auth.uid in existing().participantUids;
+        allow list: if isSignedIn() && request.auth.uid in resource.data.participantUids;
+
+        allow create: if isSignedIn() && isValidId(messageId) &&
+                         incoming().keys().hasAll(['senderId', 'recipientId', 'participantUids', 'ciphertext', 'iv', 'encryptedKeySender', 'encryptedKeyRecipient', 'isEncrypted', 'createdAt']) &&
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         isValidMessage(incoming());
+
+        allow update: if false; // Encrypted messages are immutable
+        allow delete: if isSignedIn() && isValidId(messageId) && existing().senderId == request.auth.uid;
+      }
+    }
+
+    // --- Moments (Momen) Collection ---
+    match /moments/{momentId} {
+      allow get: if isSignedIn() && isValidId(momentId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() && isValidId(momentId) &&
+                       incoming().keys().hasAll(['momentId', 'authorId', 'authorName', 'authorEmail', 'text', 'backgroundStyle', 'likesCount', 'commentsCount', 'createdAt']) &&
+                       incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                       isValidMoment(incoming());
+
+      allow update: if isSignedIn() && isValidId(momentId) &&
+                       incoming().momentId == existing().momentId &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         // Author editing text/style
+                         (existing().authorId == request.auth.uid &&
+                          isValidMoment(incoming()) &&
+                          incoming().diff(existing()).affectedKeys().hasOnly(['text', 'backgroundStyle', 'likesCount', 'commentsCount']))
+                         ||
+                         // Any signed-in user incrementing/decrementing likes or comments
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'commentsCount']) &&
+                          incoming().likesCount is int && incoming().likesCount >= 0 &&
+                          incoming().commentsCount is int && incoming().commentsCount >= 0)
+                       );
+
+      allow delete: if isSignedIn() && isValidId(momentId) && existing().authorId == request.auth.uid;
+
+      // Comments on Moments
+      match /comments/{commentId} {
+        allow get: if isSignedIn() && isValidId(commentId);
+        allow list: if isSignedIn();
+
+        allow create: if isSignedIn() && isValidId(commentId) &&
+                         incoming().keys().hasAll(['commentId', 'momentId', 'authorId', 'authorName', 'authorEmail', 'commentText', 'createdAt']) &&
+                         incoming().createdAt is timestamp && incoming().createdAt <= request.time &&
+                         isValidMomentComment(incoming());
+
+        allow update: if false; // Comments are immutable
+        allow delete: if isSignedIn() && isValidId(commentId) && existing().authorId == request.auth.uid;
+      }
+    }
+  }
+}

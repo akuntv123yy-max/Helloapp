@@ -1,0 +1,6 @@
+{
+  "name": "Halloapp",
+  "description": "Aplikasi pesan singkat dengan enkripsi end-to-end, login Gmail, dan fitur Momen harian.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

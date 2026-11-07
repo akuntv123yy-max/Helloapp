@@ -1,0 +1,109 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile containing display info and public key for E2EE",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "displayName": { "type": "string" },
+        "email": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "publicKey": { "type": "string", "description": "Base64 encoded public key for E2EE" },
+        "statusMessage": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "displayName", "email", "publicKey", "createdAt"]
+    },
+    "Conversation": {
+      "title": "Conversation",
+      "description": "Direct 1-on-1 chat conversation between two users",
+      "type": "object",
+      "properties": {
+        "conversationId": { "type": "string" },
+        "participantUids": { "type": "array" },
+        "participantNames": { "type": "object" },
+        "participantEmails": { "type": "object" },
+        "lastMessageCiphertext": { "type": "string" },
+        "lastMessageSenderId": { "type": "string" },
+        "lastMessageTimestamp": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["conversationId", "participantUids", "participantNames", "participantEmails", "createdAt"]
+    },
+    "Message": {
+      "title": "Message",
+      "description": "End-to-End Encrypted message within a conversation",
+      "type": "object",
+      "properties": {
+        "senderId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "participantUids": { "type": "array" },
+        "ciphertext": { "type": "string", "description": "AES-256-GCM encrypted payload" },
+        "iv": { "type": "string", "description": "Base64 initialization vector" },
+        "encryptedKeySender": { "type": "string", "description": "Encrypted session key for sender" },
+        "encryptedKeyRecipient": { "type": "string", "description": "Encrypted session key for recipient" },
+        "isEncrypted": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["senderId", "recipientId", "participantUids", "ciphertext", "iv", "encryptedKeySender", "encryptedKeyRecipient", "isEncrypted", "createdAt"]
+    },
+    "Moment": {
+      "title": "Moment",
+      "description": "Daily short story (Momen) shared by user with friends",
+      "type": "object",
+      "properties": {
+        "momentId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorEmail": { "type": "string" },
+        "authorPhotoUrl": { "type": "string" },
+        "text": { "type": "string" },
+        "backgroundStyle": { "type": "string" },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["momentId", "authorId", "authorName", "authorEmail", "text", "backgroundStyle", "likesCount", "commentsCount", "createdAt"]
+    },
+    "MomentComment": {
+      "title": "MomentComment",
+      "description": "Comment on a Moment by friends",
+      "type": "object",
+      "properties": {
+        "commentId": { "type": "string" },
+        "momentId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorEmail": { "type": "string" },
+        "commentText": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["commentId", "momentId", "authorId", "authorName", "authorEmail", "commentText", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User profiles and their E2EE public keys"
+    },
+    "/conversations/{conversationId}": {
+      "schema": "Conversation",
+      "description": "Chat conversations between users"
+    },
+    "/conversations/{conversationId}/messages/{messageId}": {
+      "schema": "Message",
+      "description": "Encrypted messages within a conversation"
+    },
+    "/moments/{momentId}": {
+      "schema": "Moment",
+      "description": "Short stories shared as Moments"
+    },
+    "/moments/{momentId}/comments/{commentId}": {
+      "schema": "MomentComment",
+      "description": "Comments left on Moments"
+    }
+  }
+}
